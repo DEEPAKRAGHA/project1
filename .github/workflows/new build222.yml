@@ -1,0 +1,143 @@
+Skip to content
+Navigation Menu
+kivy
+buildozer
+
+Type / to search
+Code
+Issues
+76
+Pull requests
+28
+Actions
+Projects
+Security
+Insights
+👷 Docker push to GHCR #1888
+ Merged
+AndreMiras merged 1 commit into master from feature/github_container_registry  on Jan 23
++32 −8 
+ Conversation 0
+ Commits 1
+ Checks 36
+ Files changed 2
+ Merged
+👷 Docker push to GHCR
+#1888
+ 
+File filter 
+ 
+Filter changed files
+👷 Docker push to GHCR
+Also publish to the GitHub Container Registry as a fallback method, fixes #1887
+ master (#1888)
+@AndreMiras
+AndreMiras committed on Jan 18 
+commit 55b71423be990fed9fb339d597cbf78b108cdcd9
+  34 changes: 26 additions & 8 deletions34  
+.github/workflows/docker.yml
+Original file line number	Diff line number	Diff line change
+@@ -1,44 +1,62 @@
+name: Docker
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+env:
+  IMAGE_NAME: kivy/buildozer
+  DOCKERHUB_IMAGE: kivy/buildozer
+  GHCR_IMAGE: ghcr.io/${{ github.repository }}
+  SHOULD_PUBLISH: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')) }}
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      # Login to DockerHub
+      - uses: docker/login-action@v3
+        if: ${{ env.SHOULD_PUBLISH == 'true' }}
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Login to GHCR
+      - uses: docker/login-action@v3
+        if: ${{ env.SHOULD_PUBLISH == 'true' }}
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Push Multi-platform Image
+        uses: docker/build-push-action@v6
+        with:
+          push: ${{ env.SHOULD_PUBLISH == 'true' }}
+          tags: ${{ env.IMAGE_NAME }}:latest
+          tags: |
+            ${{ env.DOCKERHUB_IMAGE }}:latest
+            ${{ env.GHCR_IMAGE }}:latest
+          platforms: linux/amd64,linux/arm64
+          cache-from: type=registry,ref=${{ env.IMAGE_NAME }}:latest
+          cache-to: ${{ env.SHOULD_PUBLISH == 'true' && format('type=registry,ref={0}:latest,mode=max', env.IMAGE_NAME) || '' }}
+          cache-from: type=registry,ref=${{ env.DOCKERHUB_IMAGE }}:latest
+          cache-to: ${{ env.SHOULD_PUBLISH == 'true' && format('type=registry,ref={0}:latest,mode=max', env.DOCKERHUB_IMAGE) || '' }}
+
+      - name: Local Build for Testing
+        uses: docker/build-push-action@v6
+        with:
+          # Load image into local Docker daemon
+          load: true
+          cache-from: type=registry,ref=${{ env.IMAGE_NAME }}:latest
+          tags: ${{ env.IMAGE_NAME }}:latest
+          cache-from: type=registry,ref=${{ env.DOCKERHUB_IMAGE }}:latest
+          tags: ${{ env.DOCKERHUB_IMAGE }}:latest
+      # Run the locally built image to test it
+      - name: Docker run
+        run: docker run ${{ env.IMAGE_NAME }} --version
+        run: docker run ${{ env.DOCKERHUB_IMAGE }} --version
+
+  update-readme:
+    runs-on: ubuntu-24.04
+@@ -50,5 +68,5 @@ jobs:
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ env.IMAGE_NAME }}
+          repository: ${{ env.DOCKERHUB_IMAGE }}
+          readme-filepath: README.md
+  6 changes: 6 additions & 0 deletions6  
+README.md
+Original file line number	Diff line number	Diff line change
+@@ -85,6 +85,12 @@ docker run --volume "$(pwd)":/home/user/hostcwd kivy/buildozer --version
+docker run -v $HOME/.buildozer:/home/user/.buildozer -v $(pwd):/home/user/hostcwd kivy/buildozer android debug
+```
+
+The image is published to both Docker Hub and GitHub Container Registry and can be pulled from both:
+
+```bash
+docker pull kivy/buildozer:latest
+docker pull ghcr.io/kivy/buildozer:latest
+```
+
+## Buildozer GitHub action
+
+Footer
+© 2025 GitHub, Inc.
+Footer navigation
+Terms
+Privacy
+Security
+Status
+Docs
+Contact
+Manage cookies
+Do not share my personal information
+:construction_worker: Docker push to GHCR by AndreMiras · Pull Request #1888 · kivy/buildozer 
