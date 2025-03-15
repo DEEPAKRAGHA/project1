@@ -30,7 +30,7 @@ jobs:
 
       # Specify the image tag for buildozer
       - name: Build with Buildozer
-        uses: ArtemSBulgakov/buildozer-action@v1
+        uses: ArtemSBulgakov/buildozer-action@v2
         id: buildozer
         with:
           command: buildozer android debug
