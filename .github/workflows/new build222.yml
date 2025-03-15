@@ -1,143 +1,95 @@
-Skip to content
-Navigation Menu
-kivy
-buildozer
+name: Custom build
 
-Type / to search
-Code
-Issues
-76
-Pull requests
-28
-Actions
-Projects
-Security
-Insights
-👷 Docker push to GHCR #1888
- Merged
-AndreMiras merged 1 commit into master from feature/github_container_registry  on Jan 23
-+32 −8 
- Conversation 0
- Commits 1
- Checks 36
- Files changed 2
- Merged
-👷 Docker push to GHCR
-#1888
- 
-File filter 
- 
-Filter changed files
-👷 Docker push to GHCR
-Also publish to the GitHub Container Registry as a fallback method, fixes #1887
- master (#1888)
-@AndreMiras
-AndreMiras committed on Jan 18 
-commit 55b71423be990fed9fb339d597cbf78b108cdcd9
-  34 changes: 26 additions & 8 deletions34  
-.github/workflows/docker.yml
-Original file line number	Diff line number	Diff line change
-@@ -1,44 +1,62 @@
-name: Docker
 on:
-  push:
-  pull_request:
   workflow_dispatch:
+    inputs:
+      arch:
+        description: "Comma separated architectures (e.g., armeabi-v7a, arm64-v8a, x86_64, x86)"
+        required: true
+        default: "armeabi-v7a,arm64-v8a,x86_64,x86"
+      artifact:
+        description: "Artifact type"
+        required: true
+        default: "apk"
+        type: choice
+        options:
+          - "aab"
+          - "aar"
+          - "apk"
+      bootstrap:
+        description: "Bootstrap to use"
+        required: true
+        default: "sdl2"
+        type: choice
+        options:
+          - "qt"
+          - "sdl2"
+          - "service_library"
+          - "service_only"
+          - "webview"
+      mode:
+        description: "Build mode"
+        required: true
+        default: "debug"
+        type: choice
+        options:
+          - "debug"
+          - "release"
+      os:
+        description: "Operating system to run on"
+        required: true
+        default: "ubuntu-latest"
+        type: choice
+        options:
+          - "ubuntu-latest"
+          - "macos-latest"
+      requirements:
+        description: "Comma separated requirements"
+        required: true
+        default: "python3,kivy"
 
 env:
-  IMAGE_NAME: kivy/buildozer
-  DOCKERHUB_IMAGE: kivy/buildozer
-  GHCR_IMAGE: ghcr.io/${{ github.repository }}
-  SHOULD_PUBLISH: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')) }}
+  APK_ARTIFACT_FILENAME: bdist_unit_tests_app-debug-1.1.apk
+  AAB_ARTIFACT_FILENAME: bdist_unit_tests_app-release-1.1.aab
+  AAR_ARTIFACT_FILENAME: bdist_unit_tests_app-release-1.1.aar
+  PYTHONFORANDROID_PREREQUISITES_INSTALL_INTERACTIVE: 0
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    permissions:
-      contents: read
-      packages: write
+    name: Build test APP [ ${{ github.event.inputs.arch }} | ${{ github.event.inputs.artifact }} | ${{ github.event.inputs.bootstrap }} | ${{ github.event.inputs.mode }} | ${{ github.event.inputs.os }} | ${{ github.event.inputs.requirements }}]
+    runs-on: ${{ github.event.inputs.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-
-      # Login to DockerHub
-      - uses: docker/login-action@v3
-        if: ${{ env.SHOULD_PUBLISH == 'true' }}
+      - name: Checkout python-for-android
+        uses: actions/checkout@v4
+      - name: Pull the python-for-android docker image
+        run: make docker/pull
+      - name: Build python-for-android docker image
+        run: make docker/build
+      - name: Build multi-arch artifact with docker
+        run: |
+          docker run --name p4a-latest kivy/python-for-android make ARCH=${{ github.event.inputs.arch }} ARTIFACT=${{ github.event.inputs.artifact }} BOOTSTRAP=${{ github.event.inputs.bootstrap }} MODE=${{ github.event.inputs.mode }} REQUIREMENTS=${{ github.event.inputs.requirements }} testapps-generic
+      - name: Copy produced artifacts from docker container (*.apk, *.aab)
+        if: github.event.inputs.bootstrap != 'service_library'
+        run: |
+          mkdir -p dist
+          docker cp p4a-latest:/home/user/app/testapps/on_device_unit_tests/${{ env.APK_ARTIFACT_FILENAME }} dist/ || true
+          docker cp p4a-latest:/home/user/app/testapps/on_device_unit_tests/${{ env.AAB_ARTIFACT_FILENAME }} dist/ || true
+      - name: Copy produced artifacts from docker container (*.aar)
+        if: github.event.inputs.bootstrap == 'service_library'
+        run: |
+          mkdir -p dist
+          docker cp p4a-latest:/home/user/app/testapps/on_device_unit_tests/${{ env.AAR_ARTIFACT_FILENAME }} dist/
+      - name: Rename artifacts to include the build platform name (*.apk, *.aab, *.aar)
+        run: |
+          if [ -f dist/${{ env.APK_ARTIFACT_FILENAME }} ]; then mv dist/${{ env.APK_ARTIFACT_FILENAME }} dist/${{ github.event.inputs.os }}-${{ github.event.inputs.bootstrap }}-${{ env.APK_ARTIFACT_FILENAME }}; fi
+          if [ -f dist/${{ env.AAB_ARTIFACT_FILENAME }} ]; then mv dist/${{ env.AAB_ARTIFACT_FILENAME }} dist/${{ github.event.inputs.os }}-${{ github.event.inputs.bootstrap }}-${{ env.AAB_ARTIFACT_FILENAME }}; fi
+          if [ -f dist/${{ env.AAR_ARTIFACT_FILENAME }} ]; then mv dist/${{ env.AAR_ARTIFACT_FILENAME }} dist/${{ github.event.inputs.os }}-${{ github.event.inputs.bootstrap }}-${{ env.AAR_ARTIFACT_FILENAME }}; fi
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      # Login to GHCR
-      - uses: docker/login-action@v3
-        if: ${{ env.SHOULD_PUBLISH == 'true' }}
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and Push Multi-platform Image
-        uses: docker/build-push-action@v6
-        with:
-          push: ${{ env.SHOULD_PUBLISH == 'true' }}
-          tags: ${{ env.IMAGE_NAME }}:latest
-          tags: |
-            ${{ env.DOCKERHUB_IMAGE }}:latest
-            ${{ env.GHCR_IMAGE }}:latest
-          platforms: linux/amd64,linux/arm64
-          cache-from: type=registry,ref=${{ env.IMAGE_NAME }}:latest
-          cache-to: ${{ env.SHOULD_PUBLISH == 'true' && format('type=registry,ref={0}:latest,mode=max', env.IMAGE_NAME) || '' }}
-          cache-from: type=registry,ref=${{ env.DOCKERHUB_IMAGE }}:latest
-          cache-to: ${{ env.SHOULD_PUBLISH == 'true' && format('type=registry,ref={0}:latest,mode=max', env.DOCKERHUB_IMAGE) || '' }}
-
-      - name: Local Build for Testing
-        uses: docker/build-push-action@v6
-        with:
-          # Load image into local Docker daemon
-          load: true
-          cache-from: type=registry,ref=${{ env.IMAGE_NAME }}:latest
-          tags: ${{ env.IMAGE_NAME }}:latest
-          cache-from: type=registry,ref=${{ env.DOCKERHUB_IMAGE }}:latest
-          tags: ${{ env.DOCKERHUB_IMAGE }}:latest
-      # Run the locally built image to test it
-      - name: Docker run
-        run: docker run ${{ env.IMAGE_NAME }} --version
-        run: docker run ${{ env.DOCKERHUB_IMAGE }} --version
-
-  update-readme:
-    runs-on: ubuntu-24.04
-@@ -50,5 +68,5 @@ jobs:
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-          repository: ${{ env.IMAGE_NAME }}
-          repository: ${{ env.DOCKERHUB_IMAGE }}
-          readme-filepath: README.md
-  6 changes: 6 additions & 0 deletions6  
-README.md
-Original file line number	Diff line number	Diff line change
-@@ -85,6 +85,12 @@ docker run --volume "$(pwd)":/home/user/hostcwd kivy/buildozer --version
-docker run -v $HOME/.buildozer:/home/user/.buildozer -v $(pwd):/home/user/hostcwd kivy/buildozer android debug
-```
-
-The image is published to both Docker Hub and GitHub Container Registry and can be pulled from both:
-
-```bash
-docker pull kivy/buildozer:latest
-docker pull ghcr.io/kivy/buildozer:latest
-```
-
-## Buildozer GitHub action
-
-Footer
-© 2025 GitHub, Inc.
-Footer navigation
-Terms
-Privacy
-Security
-Status
-Docs
-Contact
-Manage cookies
-Do not share my personal information
-:construction_worker: Docker push to GHCR by AndreMiras · Pull Request #1888 · kivy/buildozer 
+          name: ${{ github.event.inputs.os }}-${{ github.event.inputs.bootstrap }}-artifacts
+          path: dist
+      # Cleanup the container after all steps are done
+      - name: Cleanup Docker container
+        run: docker rm p4a-latest
+        if: always()
