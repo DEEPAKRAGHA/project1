@@ -28,12 +28,14 @@ jobs:
           path: .buildozer
           key: ${{ runner.os }}-${{ steps.get-date.outputs.date }}-${{ hashFiles('buildozer.spec') }}
 
+      # Specify the image tag for buildozer
       - name: Build with Buildozer
         uses: ArtemSBulgakov/buildozer-action@v1
         id: buildozer
         with:
           command: buildozer android debug
           buildozer_version: stable
+          docker_image: kivy/buildozer:1.0.0  # Specify a stable tag like '1.0.0' or a known working version
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
