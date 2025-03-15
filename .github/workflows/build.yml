@@ -37,7 +37,7 @@ jobs:
         with:
           command: buildozer android debug
           buildozer_version: stable
-          docker_image: kivy/buildozer:1.0.0  # Specify the exact Docker image version to avoid 'latest' issues
+          docker_image: docker pull ghcr.io/kivy/buildozer:latest  # Specify the exact Docker image version to avoid 'latest' issues
 
       # Upload the artifacts (APK or others)
       - name: Upload artifacts
